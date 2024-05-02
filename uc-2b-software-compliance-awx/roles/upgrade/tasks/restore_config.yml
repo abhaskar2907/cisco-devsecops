@@ -1,0 +1,39 @@
+---
+- block:
+  - name: Set timestamp variable to append to config backup
+    set_fact:
+      timestamp: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
+  - name: Get Router Running Config
+    cisco.ios.ios_command:
+      commands: show run
+    register: rtr_runcfg
+
+  - name: "Backup running config at playbook directory"
+    copy:
+      content: "{{ rtr_runcfg.stdout[0] }}"
+      dest: "{{ playbook_dir }}/{{ inventory_hostname }}_{{ timestamp }}_during_upgrade.cfg"
+
+  - name: "Check diff in pre upgrade and current running configs"
+    command: "diff -b -I '^Current' -I '^! Last' {{ playbook_dir }}/{{ inventory_hostname }}_{{ timestamp }}_pre_upgrade.cfg {{ playbook_dir }}/{{ inventory_hostname }}_{{ timestamp }}_during_upgrade.cfg"
+    ignore_errors: true
+    register: diff_config
+
+  - name: "Print diff in config file if any"
+    debug:
+      msg: "{{ diff_config.stdout_lines }}" 
+
+  - name: "Restore pre upgrade config if diff found above"
+    ansible.netcommon.cli_command:
+      command: "copy bootflash:{{ inventory_hostname }}-config-{{ timestamp }} running-config"
+      check_all: true
+      prompt:
+        - "Destination filename"
+      answer:
+        - "running-config"
+    register: restore
+    when: diff_config.failed == true
+
+  - name: "Print output if above restore config task exucuted"
+    debug:
+      msg: "{{ restore }}"
+

@@ -1,0 +1,16 @@
+---
+- name: "{{ ansible_host }} - Enable http server"
+  cisco.ios.ios_config:
+    lines: "ip http server"
+  register: http_result
+
+- name: "{{ ansible_host }} Check HTTP server status"
+  cisco.ios.ios_command:
+    commands: show ip http server status
+  register: check_http
+
+- name: "{{ ansible_host }} Assert HTTP server is enabled"
+  ansible.builtin.assert:
+    that: "'Enabled' in check_http.stdout_lines[0][0]"
+    fail_msg: "HTTP state is NOT enabled"
+    success_msg: "HTTP state is enabled"

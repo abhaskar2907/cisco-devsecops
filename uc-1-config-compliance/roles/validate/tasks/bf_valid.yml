@@ -1,0 +1,42 @@
+---
+- ansible.builtin.import_role:
+    name: batfish.base
+
+- name: Execute Batfish related tasks
+  block:
+
+  - name: Setup connection to Batfish service
+    bf_session:
+      host: 192.168.100.5
+      name: batfish
+
+  - name: Initialize the DevSecOps network
+    bf_init_snapshot:
+      network: dso_network
+      snapshot: dso_snapshot
+      snapshot_data: ./batfish/networks/
+      overwrite: true
+
+  - name: Validate the configuration of network devices
+    bf_assert:
+      assertions:
+        - type: assert_no_undefined_references
+          name: Confirm that there are NO undefined references on any network device
+
+        - type: assert_no_incompatible_bgp_sessions
+          name: Confirm that all BGP peers are properly configured
+
+        - type: assert_no_unestablished_bgp_sessions
+          name: Confirm that all compatible BGP peers establish sessions
+    register: bf_assert
+    ignore_errors: true
+
+  - name: Display Batfish validation result details
+    debug: msg="{{bf_assert}}"
+    failed_when: >
+      ("successfully" not in bf_assert.summary)
+
+  delegate_to: localhost
+  run_once: true
+  vars:
+    ansible_connection: local

@@ -1,0 +1,16 @@
+---
+- name: Get Router Stats
+  cisco.ios.ios_command:
+    commands:
+      - show ip bgp sum | inc {{ bgpnei_ip }}
+  register: rtr_stats
+
+- name: Validate BGP Peer state
+  debug:
+    msg: "{{ rtr_stats.stdout[0] }}"
+  failed_when:
+    - '"Idle" in rtr_stats.stdout[0]'
+    - '"Active" in rtr_stats.stdout[0]'
+
+  vars:
+    ansible_connection: ansible.netcommon.network_cli

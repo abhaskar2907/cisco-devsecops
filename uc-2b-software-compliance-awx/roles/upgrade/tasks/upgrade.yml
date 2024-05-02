@@ -1,0 +1,104 @@
+---  
+- block:
+  - name: "Set upgrade variable to true"
+    set_fact:
+      upgrade: true
+  
+  - debug:
+      msg: "Upgrading to image: {{ image }}"
+
+  - name: Set boot system to use new image
+    cisco.ios.ios_config:
+      lines:
+        - "boot system flash bootflash:{{ image }}"
+        - "config-reg 0x2102"
+      match: none
+      save_when: always     # Same as "copy run start"
+    register: boot_result
+
+  - name: Check boot system for software images
+    ansible.netcommon.cli_command:
+      command: "show run | include boot"
+    register: check_boot
+
+  - block:
+      - name: Fetch extra image in boot
+        set_fact:
+          extra_image: "{{ check_boot.stdout_lines[1].split(':')[1] }}"
+
+      - debug:
+          msg:
+            - "Boot system contents: {{ check_boot.stdout_lines }}"
+            - "Extra image to be deleted from boot: {{ extra_image }}"
+
+      - name: Delete extra image from boot
+        cisco.ios.ios_config:
+          lines: "no boot system flash bootflash:{{ extra_image }}"
+
+    when:
+      - check_boot.stdout_lines|length > 4
+    ignore_errors: true
+
+  - name: Check boot system again for software images
+    ansible.netcommon.cli_command:
+      command: "show run | include boot"
+    register: check_boot
+
+  - debug:
+      msg: "Boot system contents: {{ check_boot.stdout_lines }}"
+
+  - name: Verify start boot system
+    cisco.ios.ios_command:
+      commands: show start | include boot system
+    register: showstartboot
+    failed_when: "image not in showstartboot.stdout[0]"
+    ignore_errors: true
+
+  - name: Verify boot system
+    cisco.ios.ios_command:
+      commands: show run | include boot system
+    register: showrunboot
+    failed_when: "image not in showrunboot.stdout[0]"
+    ignore_errors: true
+
+  - name: Verify config registry value
+    cisco.ios.ios_command:
+      commands: show bootvar | in Config
+    register: showrunbootvar
+    failed_when: '"0x2102" not in showrunbootvar.stdout[0]'
+    ignore_errors: true
+
+  ## Task to reload CSR router
+  # - name: Reload router
+  #   ios_command:
+  #     commands:
+  #       - command: "reload"
+  #         prompt: "Proceed with reload"
+  #         answer: "\r"
+  #   vars:
+  #     ansible_command_timeout: 30
+  #   tags: reload
+
+  # Task to reload ASR router
+  - name: Reload router
+    ansible.netcommon.cli_command:
+      command: reload
+      check_all: true
+      prompt:
+        - "System configuration has been modified. Save"
+        - "Proceed with reload"
+      answer:
+        - "yes"
+        - "\r"
+    vars:
+      ansible_command_timeout: 30
+    tags: reload
+    when: reload | bool
+
+  - name: Wait 2 minutes and start checking every 20 seconds for 3 minutes
+    ansible.builtin.wait_for_connection:
+      delay: 120
+      timeout: 300
+      sleep: 20
+    tags: reload
+    when: reload | bool

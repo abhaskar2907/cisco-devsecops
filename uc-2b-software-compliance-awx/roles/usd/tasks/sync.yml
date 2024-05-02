@@ -1,0 +1,17 @@
+- block:
+  - name: "Check {{ usd_dir }}"
+    stat:
+      path: "{{ usd_dir }}"
+    register: usd
+  
+  - name: "Assert USD at {{ ansible_host }}:{{ usd_dir }}"
+    ansible.builtin.assert:
+      that: usd.stat.exists
+      fail_msg: "Failure: Ensure USD contents exists at {{ ansible_host }}:{{ usd_dir }}"
+      success_msg: "Success: USD contents exists at {{ ansible_host }}:{{ usd_dir }}"
+
+  - name: "Copy USD contents from {{ usd_dir }} to /tmp/"
+    synchronize:
+      src: "{{ usd_dir }}"
+      dest: /tmp/
+    delegate_to: "{{ inventory_hostname }}"

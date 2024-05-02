@@ -1,0 +1,17 @@
+---
+- block:
+  - name: Apply Netconf Config to Router
+    netconf_config:
+      content: "{{lookup('file', 'router_configs/{{ inventory_hostname }}_model.xml')}}"
+    register: applycfg
+
+  - name: Check Netconf Config Push
+    ansible.builtin.assert:
+      that:
+        - applycfg|trim is search("server_capabilities")
+      fail_msg: "Failure: Netconf Config Push did not complete, check model file and reachability!"
+      success_msg: "Success: Netconf Config Push Completed to Router"
+    ignore_errors: True
+  
+  connection: netconf
+

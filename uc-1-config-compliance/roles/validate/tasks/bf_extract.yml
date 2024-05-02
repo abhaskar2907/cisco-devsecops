@@ -1,0 +1,38 @@
+---
+- ansible.builtin.import_role:
+    name: batfish.base
+
+- name: Execute Batfish related tasks
+  block:
+
+  - name: Setup connection to Batfish service
+    bf_session:
+      host: 192.168.100.5
+      name: batfish
+
+  - name: Initialize the DevSecOps network
+    bf_init_snapshot:
+      network: dso_network
+      snapshot: dso_snapshot
+      snapshot_data: batfish/networks/
+      overwrite: true
+
+  - name: Retrieve Batfish Facts
+    bf_extract_facts:
+      output_directory: batfish/data/bf_facts
+    register: bf_facts
+
+  - name: Display select facts gathered by Batfish
+    block:
+    - name: Display BGP configuration for all nodes
+      debug: msg=" {{item.value.BGP.Neighbors}} "
+      with_dict: "{{bf_facts.result.nodes}}"
+      loop_control:
+        label: " {{item.key}}.BGP.Neighbors "
+
+    when: bf_facts.failed|bool == false
+
+  delegate_to: localhost
+  run_once: true
+  vars:
+    ansible_connection: local

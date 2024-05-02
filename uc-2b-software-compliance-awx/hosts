@@ -1,0 +1,21 @@
+[routers]
+asr ansible_host=
+
+[controller]
+jenkins ansible_host=
+
+[routers:vars]
+ansible_user=
+ansible_password=
+ansible_connection=ansible.netcommon.network_cli
+ansible_network_os=ios
+image=asr1001x-universalk9.16.10.03.SPA.bin
+image_vm=
+image_vm_user=
+image_vm_pass=
+ansible_command_timeout=900
+
+[controller:vars]
+ansible_user=
+ansible_password=
+usd_dir=/home/admin/usd

@@ -1,0 +1,7 @@
+[routers]
+c8kv ansible_host=
+
+[routers:vars]
+ansible_user=ec2-user
+ansible_connection=ansible.netcommon.network_cli
+ansible_network_os=ios

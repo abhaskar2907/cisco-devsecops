@@ -1,0 +1,4 @@
+---
+- include_tasks: "{{ stage }}.yml"
+  vars:
+    ansible_network_os: ios

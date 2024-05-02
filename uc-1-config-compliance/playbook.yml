@@ -1,0 +1,16 @@
+# docker run --rm -it --privileged -u root -v ${PWD}:/work dso-demos bash
+---
+- hosts: "{{ devices | default('routers') }}"
+  gather_facts: false
+  roles:
+    - role: device_info
+      tags: device_info
+
+    - role: config
+      tags: config
+
+    - role: reset
+      tags: reset
+
+    - role: validate
+      tags: validate

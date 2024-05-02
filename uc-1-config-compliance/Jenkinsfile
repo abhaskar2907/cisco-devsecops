@@ -1,0 +1,118 @@
+pipeline {
+    //agent any
+    agent {
+        docker {
+            image ''
+            args '-u root:root -v ${PWD}:/home/appuser --privileged -v /home/admin/sonar:/home/appuser/sonar --network=host'
+        }
+    }
+    environment {
+        NEXUS_USER = ""
+        NEXUS_PASSWORD = ""
+        NEXUS_URL = ""
+        NEXUS_REPO = ""
+    }
+
+    stages {
+        stage ('Install dependencies') {
+            steps {
+                sh 'apt-get update -y'
+                sh 'apt-get install yamllint -y'
+                sh 'ansible-galaxy collection install cisco.ios'
+                sh 'ansible-galaxy install --force batfish.base'
+            }
+        }
+        stage('Checkout from GitHub') {
+            steps {
+                git branch: '',
+                credentialsId: '',
+                url: ''
+            }
+        }
+        stage('Yamllint') {
+            steps {
+                sh 'yamllint uc-1-config-compliance/playbook.yml'
+                sh 'yamllint uc-1-config-compliance/roles/common/*'
+                sh 'yamllint uc-1-config-compliance/roles/reset/*'
+            }
+        }
+        stage("SonarQube analysis") {
+	         steps {
+                sh "mkdir -p /home/appuser/sonar"
+                withSonarQubeEnv('sonarqube') {
+                    sh '/home/appuser/sonar/sonar-scanner-4.8.0.2856-linux/bin/sonar-scanner -Dsonar.projectKey=bgp_add -Dsonar.projectVersion=${BUILD_NUMBER}'
+                }
+	         }
+	     }
+        //  Sonar fail QG
+        stage("Quality gate") {
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }      
+        stage ('Fetch interfaces and BGP details') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t device_info -e stage="show"'
+            }
+        }
+        stage ('Build device configurations') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t config -e stage="build"'
+            }
+        }
+        stage ('Push device configurations') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t config -e stage="set"'
+            }
+        }
+        stage ('Save running config') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t device_info -e stage="get_run"'
+            }
+        }
+        stage ('Batfish Extract') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t validate -e stage="bf_extract"'
+            }
+        }
+        stage ('Batfish Validate') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t validate -e stage="bf_valid"'
+            }
+        }
+        stage ('Batfish Forward Validate') {
+           steps {
+               sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t validate -e stage="bf_forward"'
+           }
+        }
+        stage ('Validate configurations') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t validate -e stage="router_check"'
+            }
+        }
+        stage ('Fetch interfaces and BGP details again') {
+            steps {
+                sh 'ansible-playbook -i uc-1-config-compliance/hosts uc-1-config-compliance/playbook.yml -t device_info -e stage="show"'
+            }
+        }
+        stage ('Publish router configs to Nexus') {
+            steps {
+                dir('uc-1-config-compliance') {
+                    sh 'tar -czvf router_configs.tar.gz router_configs/'
+                    sh "curl -v -u ${NEXUS_USER}:${NEXUS_PASSWORD} --upload-file router_configs.tar.gz ${NEXUS_URL}/repository/${NEXUS_REPO}/"
+                }
+            }
+        }
+   }
+   post {
+        always {
+            script {
+                catchError(buildResult: 'SUCCESS') {
+                    sh 'docker image rm alpine:latest'
+                }
+                echo 'Jenkins device upgrade build completed.'
+                cleanWs()
+            }
+        }
+    }
+}

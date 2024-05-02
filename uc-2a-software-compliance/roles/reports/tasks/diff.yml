@@ -1,0 +1,8 @@
+---
+- name: "Pre-Post Check Diff Comparison"
+  ansible.builtin.shell: "diff -y --suppress-common-lines {{ playbook_dir }}/{{ inventory_hostname }}_pre_health_check.txt {{ playbook_dir }}/{{ inventory_hostname }}_post_health_check.txt"
+  delegate_to: localhost
+  register: diff
+
+- debug:
+    msg: "{{ diff.stdout_lines }}"

@@ -1,0 +1,29 @@
+---
+
+- name: Get router BGP config
+  cisco.ios.ios_command:
+    commands: show run | section bgp
+  register: bgp
+
+- name: "Print current BGP config"
+  debug:
+    msg: "{{ bgp.stdout_lines | flatten }}"
+
+- name: Remove BGP
+  cisco.ios.ios_config:
+    lines: "no router bgp {{ bgp_id }}"
+#    match: none
+#    save_when: always     # Same as "copy run start"
+  register: bgp_result
+
+- name: Get router BGP config
+  cisco.ios.ios_command:
+    commands: show run | section bgp
+  register: bgp
+
+- name: Assert BGP removal
+  ansible.builtin.assert:
+    that:
+      - bgp.stdout[0]|length == 0
+    fail_msg: "failure: Found BGP configuration"
+    success_msg: "Success: BGP is not configured"

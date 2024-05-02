@@ -1,0 +1,44 @@
+---
+- block:
+  - name: Get Router Running Config
+    cisco.ios.ios_command:
+      commands: show run
+    register: rtr_runcfg
+
+  - name: Set timestamp variable to append to config backup
+    set_fact:
+      timestamp: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
+
+  - name: "Backup running configs on router"
+    ansible.netcommon.cli_command:
+      command: "copy running-config bootflash:{{ inventory_hostname }}-config-{{ timestamp }}"
+      check_all: true
+      prompt:
+        - "Destination filename"
+        - "Do you want to over write"
+      answer:
+        - "{{ inventory_hostname }}-config-{{ timestamp }}"
+        - "\r"
+    register: backup
+
+  - name: "Print backup running config output"
+    debug:
+      msg: "{{ backup.stdout_lines }}"
+
+  - name: "Backup running config at playbook directory"
+    copy:
+      content: "{{ rtr_runcfg.stdout[0] }}"
+      dest: "{{ playbook_dir }}/{{ inventory_hostname }}_{{ timestamp }}_pre_upgrade.cfg"
+
+  - name: Check boot system for software images
+    ansible.netcommon.cli_command:
+      command: "show run | include boot"
+    register: check_boot
+
+  - name: "Save current image name"
+    set_fact:
+      current_image: "{{ check_boot.stdout_lines[1].split(':', 1).1 }}"
+
+  - debug:
+      msg: "Current image: {{ current_image }}"
+

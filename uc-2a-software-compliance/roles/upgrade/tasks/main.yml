@@ -1,0 +1,29 @@
+---
+- block:
+  - name: "Run backup tasks"
+    import_tasks: backup.yml
+  
+  - name: "Run pre upgrade tasks"
+    import_tasks: pre_upgrade.yml
+
+  - name: "Run upgrade tasks"
+    import_tasks: upgrade.yml
+
+  - name: "Run post upgrade tasks"
+    import_tasks: post_upgrade.yml
+
+  rescue:
+  - debug:
+      msg: "Running restore tasks. These tasks will be skipped if upgrade not started"
+
+  - block:
+    - name: "Run upgrade tasks"
+      import_tasks: upgrade.yml
+      vars:
+        image: "{{ current_image }}"
+
+    - name: "Check and restore configs"
+      import_tasks: restore_config.yml
+  
+    when: upgrade is defined
+

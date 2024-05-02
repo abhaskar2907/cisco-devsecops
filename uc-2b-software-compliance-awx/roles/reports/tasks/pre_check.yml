@@ -1,0 +1,24 @@
+---
+- name: "Router Health Monitoring Commands"
+  ios_command:
+    commands:
+      - "{{item}}"
+  with_items:
+    - show version | in Cisco IOS XE Software
+    - show ip int bri | in up
+    - show ip route
+  register: ios_mon
+
+- name: "Save output to a file"
+  copy:
+    content: |
+      "\n\n ===show version=== \n\n
+      {{ ios_mon.results[0].stdout|join('\n') }}
+      \n\n ===show ip int brief=== \n\n
+      {{ ios_mon.results[1].stdout|join('\n') }}
+      \n\n ===show ip route=== \n\n
+      {{ ios_mon.results[2].stdout|join('\n') }}\n
+    dest: "./{{ inventory_hostname }}_pre_health_check.txt"
+
+- name: "Save output to {{ image_vm }} /tmp"
+  command: "scp {{ inventory_hostname }}_pre_health_check.txt {{ image_vm_user }}@{{ image_vm }}:/tmp/"

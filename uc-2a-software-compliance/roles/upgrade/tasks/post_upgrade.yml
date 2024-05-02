@@ -1,0 +1,21 @@
+---
+  - name: Check current device version
+    cisco.ios.ios_command:
+      commands: show version  | in Cisco IOS XE Software
+    register: version_result
+
+  - debug:
+      msg: "Desired version: {{ new_ios_xe_version }}"
+
+  - debug:
+      msg: "Current version: {{ version_result.stdout_lines.0 }}"
+
+  - name: Assert new router version
+    ansible.builtin.assert:
+      that: "new_ios_xe_version in version_result.stdout_lines.0"
+      fail_msg: "Failed to upgrade router software"
+      success_msg: "Successfully upgraded router software"
+
+  - name: Print current device version
+    debug:
+      msg: "{{ version_result.stdout_lines[0][0] }}"

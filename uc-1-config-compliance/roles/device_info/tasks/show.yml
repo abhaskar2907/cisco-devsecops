@@ -1,0 +1,10 @@
+#ansible-galaxy collection install cisco.ios
+- name: Check interfaces and bgp neighbor
+  cisco.ios.ios_command:
+    commands:
+      - "show ip int brief"
+      - "show ip bgp summary"
+  register: check_info
+
+- debug:
+    msg: "{{ check_info.stdout_lines }}"

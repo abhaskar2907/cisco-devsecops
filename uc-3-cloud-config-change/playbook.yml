@@ -1,0 +1,9 @@
+---
+- hosts: "{{ devices | default('routers') }}"
+  gather_facts: false
+  roles:
+    - role: device_info
+      tags: device_info
+
+    - role: http
+      tags: http

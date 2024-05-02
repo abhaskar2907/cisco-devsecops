@@ -1,0 +1,15 @@
+---
+- hosts: "{{ devices | default('routers') }}"
+  gather_facts: false
+  roles:
+    - role: reports
+      tags: reports
+
+    - role: upgrade
+      tags: upgrade
+
+    - role: device_info
+      tags: device_info
+    
+    - role: usd
+      tags: usd

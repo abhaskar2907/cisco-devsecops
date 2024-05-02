@@ -1,0 +1,130 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'IMAGE_PID', defaultValue: 'ASR1001-X', description: 'Enter IMAGE PID to download')
+        string(name: 'IMAGE_NAME', defaultValue: 'asr1001x-universalk9.16.10.03.SPA.bin', description: 'Enter IMAGE NAME to download and upgrade')
+        booleanParam(name: 'PULL', defaultValue: false, description: 'Specify if image pull is required')
+        booleanParam(name: 'RELOAD', defaultValue: false, description: 'Specify if reload is required')
+    }
+    environment {
+    sonarqube_scanner = tool "sonarqube_scanner_4.8"
+    NEXUS_USER = ""
+    NEXUS_PASSWORD = ""
+    NEXUS_URL = ""
+    NEXUS_REPO = ""
+    }
+
+    stages {
+        stage('Checkout from GitHub') {
+            steps {
+                cleanWs()
+                git branch: '',
+                credentialsId: '',
+                url: ''
+            }
+        }
+        stage("SonarQube analysis") {
+	         steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh '${sonarqube_scanner}/bin/sonar-scanner -Dsonar.projectKey=device_upgrade -Dsonar.projectVersion=${BUILD_NUMBER}'
+                }
+	         }
+	     }
+        stage("Quality gate") {
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }
+        stage('USD Tool - Software Download') {
+            steps {
+                dir('/tmp/usd') {
+                    script {
+                        withCredentials([usernamePassword(credentialsId: 'cco_creds', passwordVariable: 'CCO_PASSWORD', usernameVariable: 'CCO_USER')]) {
+                            sh '/tmp/usd/usd_app_container.sh -v -d -p ${IMAGE_PID} -i ${IMAGE_NAME} -f downloads -t cco -U $CCO_USER -P $CCO_PASSWORD'
+                        }
+                    }
+                }
+            }
+        }
+        stage ('SCA - Yamllint') {
+            agent {
+                docker {
+                    image 'alpine:latest'
+                    args '-u root:root'
+                }
+            }
+            steps {
+                sh 'apk add yamllint'
+                sh 'yamllint \$(find ./uc-2a-software-compliance/ -name "*.yml")'
+            }
+        }
+        stage ('Pre Check') {
+            agent {
+                docker {
+                    image ''
+                    args '-u root:root -v ${PWD}:/work'
+                    }
+                }
+            steps {
+                sh 'pip install jmespath'
+                sh 'ansible-playbook -i uc-2a-software-compliance/hosts uc-2a-software-compliance/playbook.yml -t reports -e phase="pre_check" -e image=${IMAGE_NAME}'
+            }
+        }
+        stage ('Upgrade') {
+            agent {
+                docker {
+                    image ''
+                    args '-u root:root -v ${PWD}:/work'
+                }
+            }
+            steps {
+                sh 'export ANSIBLE_PERSISTENT_COMMAND_TIMEOUT=900'
+                sh 'ansible-playbook -i uc-2a-software-compliance/hosts uc-2a-software-compliance/playbook.yml -t upgrade -e image=${IMAGE_NAME} -e pull=${PULL} -e reload=${RELOAD}'
+            }
+        }
+        stage ('Post Check') {
+            agent {
+                docker {
+                    image ''
+                    args '-u root:root -v ${PWD}:/work'
+                }
+            }
+            steps {
+                sh 'pip install jmespath'
+                sh 'ansible-playbook -i uc-2a-software-compliance/hosts uc-2a-software-compliance/playbook.yml -t reports -e phase="post_check"'
+            }
+        }
+        stage ('Pre-Post Check Diff Comparison') {
+            agent {
+                docker {
+                    image ''
+                    args '-u root:root -v ${PWD}:/work'
+                }
+            }
+            steps {
+                script {
+                    catchError(buildResult: 'SUCCESS') {
+                        sh 'pip install jmespath'
+                        sh 'ansible-playbook -i uc-2a-software-compliance/hosts uc-2a-software-compliance/playbook.yml -t reports -e phase="diff"'
+                    }
+                }
+            }
+        }
+        stage ('Publish image to Nexus') {
+            steps {
+                    sh "curl -v -u ${NEXUS_USER}:${NEXUS_PASSWORD} --upload-file /tmp/usd/downloads/${IMAGE_NAME} ${NEXUS_URL}/repository/${NEXUS_REPO}/"
+            }
+        }
+    }
+   post {
+        always {
+            script {
+                catchError(buildResult: 'SUCCESS') {
+                    sh 'docker image rm alpine:latest'
+                }
+                echo 'Jenkins device upgrade build completed.'
+            }
+        }
+    }
+}

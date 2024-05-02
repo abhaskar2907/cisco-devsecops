@@ -1,0 +1,40 @@
+---
+- name: Check version and bootflash directory
+  cisco.ios.ios_command:
+    commands:
+      - "show version  | in Cisco IOS XE Software"
+  register: check_boot
+
+- name: Print version
+  debug:
+    msg: "{{ check_boot.stdout_lines | flatten }}"
+
+- name: Check CDP status
+  cisco.ios.ios_command:
+    commands:
+      - show cdp
+  register: check_cdp
+
+- name: Print CDP status
+  debug:
+    msg: "{{ check_cdp.stdout_lines | flatten }}"
+
+- name: Check SNMP status
+  cisco.ios.ios_command:
+    commands:
+      - show snmp
+  register: check_snmp
+
+- name: Print SNMP status
+  debug:
+    msg: "{{ check_snmp.stdout_lines | flatten }}"
+
+- name: Check HTTP server status
+  cisco.ios.ios_command:
+    commands:
+      - show ip http server status
+  register: check_http
+
+- name: Print HTTP server status
+  debug:
+    msg: "{{ check_http.stdout_lines | flatten }}"

@@ -1,0 +1,9 @@
+- name: Get Router Running Config
+  cisco.ios.ios_command:
+    commands: show run
+  register: rtr_runcfg
+
+- name: "Save Router Running Config to {{ playbook_dir }}"
+  copy:
+    content: "{{ rtr_runcfg.stdout[0] }}"
+    dest: "{{ playbook_dir }}/{{ inventory_hostname }}_runcfg.cfg"

@@ -1,0 +1,10 @@
+---
+- name: "Install diff"
+  ansible.builtin.shell: "ls -ltr /tmp"
+
+- name: "Pre-Post Check Diff Comparison"
+  ansible.builtin.shell: "diff -y --suppress-common-lines /tmp/asr_pre_health_check.txt /tmp/asr_post_health_check.txt"
+  register: diff
+
+- debug:
+    msg: "{{ diff.stdout_lines }}"

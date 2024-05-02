@@ -1,0 +1,6 @@
+loop_int: "0"
+loop_ip: "200.200.200.1"
+loop_subnet: "255.255.255.255"
+bgp_id: "65012"
+bgpnei_ip: "192.168.100.56"
+bgpnei_remoteas: "65011"

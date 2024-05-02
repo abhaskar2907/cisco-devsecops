@@ -1,0 +1,10 @@
+---
+- name: "Add {{ ansible_host }} to known_hosts"
+  ansible.builtin.shell: "{{ item }}"
+  delegate_to: localhost
+  loop:
+    - "mkdir -p {{ local_home }}/.ssh/"
+    - "ssh-keyscan -H {{ ansible_host }} >> ~/.ssh/known_hosts"
+  vars:
+    local_home: "{{ lookup('env','HOME') }}"
+

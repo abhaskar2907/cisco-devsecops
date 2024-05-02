@@ -1,0 +1,27 @@
+version: 0.2
+
+env:
+  variables:
+    STATE: "enable"
+  secrets-manager:
+    SECRET_VALUE: "arn:aws:secretsmanager:us-west-1:<account_number>:secret:<c8kv-pem-file>"
+
+phases:
+  install:
+    commands:
+      - mkdir -p ~/.ssh
+      - echo "$SECRET_VALUE" > ~/.ssh/id_rsa
+      - chmod 400 ~/.ssh/id_rsa
+      - ls -ltr ~/.ssh/id_rsa
+  pre_build:
+    commands:
+       - echo Entered pre build phase...
+       - pwd
+       - ls -ltr
+       - ansible --version
+       - ssh -o StrictHostKeyChecking=no ec2-user@<c8kv-private-ip> "show version  | in Cisco IOS XE Software"
+  build:
+    commands:
+       - cd demos/config_push
+       - echo $STATE http server on device
+       - ansible-playbook playbook.yml -t http -e state="$STATE"

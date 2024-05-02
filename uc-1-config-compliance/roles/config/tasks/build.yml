@@ -1,0 +1,32 @@
+---
+- block:
+  - name: Create router_configs directory if it does not exist
+    ansible.builtin.file:
+      path: "{{ playbook_dir }}/router_configs"
+      state: directory
+      mode: '0755'
+
+  - name: Generate bootstrap Configuration
+    template:
+      src: lab_config.j2
+      dest: "{{ playbook_dir }}/router_configs/{{inventory_hostname}}_model.xml"
+
+  - name: Get files in Backup Folder
+    ansible.builtin.find:
+      paths: "{{ playbook_dir }}/router_configs/"
+    register: found_files
+
+  - name: Get Latest File in Backup Folder
+    ansible.builtin.set_fact:
+      latest_bkup_file: "{{ found_files.files | sort(attribute='mtime') | last }}"
+
+  - name: Check Netconf Config Push
+    ansible.builtin.assert:
+      that:
+        - latest_bkup_file|trim is search("xml")
+      fail_msg: "Failure: Netconf Config XML File Did Not Get Generated!"
+      success_msg: "Success: Netconf Config XML File Generated - {{latest_bkup_file.path}}"
+    ignore_errors: True
+  
+  delegate_to: localhost
+

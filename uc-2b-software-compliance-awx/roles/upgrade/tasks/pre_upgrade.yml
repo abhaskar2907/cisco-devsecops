@@ -1,0 +1,84 @@
+---
+- block:
+  - name: "Print upgrade image name"
+    debug:
+      msg: "{{ image }}"
+
+  - name: "Fetch desired IOS XE version from image"
+    set_fact:
+      new_version: "{{ image.split('.', 1).1 }}"
+
+  - name: "Save desired IOS XE Version"
+    set_fact:
+      new_ios_xe_version:
+        "Cisco IOS XE Software, Version {{ new_version.rsplit('.', 2).0 }}"
+
+  - name: "Print desired version"
+    debug:  
+      msg: "{{ new_version.rsplit('.', 2).0 }}"
+    register: new_version2
+
+  - name: Check current version
+    cisco.ios.ios_command:
+      commands: "show version  | in Cisco IOS XE Software"
+    register: check_ver
+
+  - name: Print current version
+    debug:
+      msg: "{{ check_ver.stdout[0].split(' ',5).5 }}"
+
+  - name: "Make sure desired version is greater than current version"
+    ansible.builtin.assert:
+      that: "new_version2.msg >= check_ver.stdout[0].split(' ',5).5"
+      fail_msg: "Desired version is lower than current version"
+      success_msg: "Desired version is greater than current version"
+    ignore_errors: true
+
+  - name: Check version and bootflash directory
+    cisco.ios.ios_command:
+      commands:
+        - "show version  | in Cisco IOS XE Software"
+        - "dir bootflash: | in bin"
+    register: check_boot
+
+  - name: Print current version and bootflash directory contents
+    debug:
+      msg: "{{ check_boot.stdout_lines }}"
+
+  - debug:
+      msg: "Ansible command timeout: {{ ansible_command_timeout }}"
+
+  - name: Pull image to device Bootflash
+    ansible.netcommon.cli_command:
+      command: "copy scp://admin@{{ image_vm }}//tmp/usd/downloads/downloads/{{ image }} ."
+      check_all: true
+      prompt:
+        - "Destination filename"
+        - "Password"
+      answer:
+        - "{{ image }}"
+        - "{{ image_vm_pass }}"
+    register: copy
+    vars:
+      ansible_command_timeout: 950
+    tags: pull
+    when: 
+      - pull | bool
+      - image not in check_boot.stdout[1]
+
+  - name: Print Bootflash copy output
+    debug:
+      msg: "{{ copy.stdout_lines | default([]) }}"
+    when: copy is defined
+    tags: pull
+
+  - name: Check bootflash directory
+    ansible.netcommon.cli_command:
+      command: "dir bootflash: | in bin"
+    register: check_boot2
+    failed_when: image not in check_boot2.stdout
+
+  - name: Print Bootflash directory contents
+    debug:
+      msg: "{{ check_boot.stdout_lines }}"
+  

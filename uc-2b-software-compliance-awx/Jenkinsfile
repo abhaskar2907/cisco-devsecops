@@ -1,0 +1,151 @@
+pipeline {
+    agent any
+    options { timestamps () }
+
+    parameters {
+        string(name: 'IMAGE_PID', defaultValue: 'ASR1001-X', description: 'Enter IMAGE PID to download')
+        string(name: 'IMAGE_NAME', defaultValue: 'asr1001x-universalk9.16.10.03.SPA.bin', description: 'Enter IMAGE NAME to download and upgrade')
+        booleanParam(name: 'PULL', defaultValue: false, description: 'Specify if pull is image pull is required')
+        booleanParam(name: 'RELOAD', defaultValue: false, description: 'Specify if reload is required')
+    }
+
+    environment {
+        AWX_API = "http://<ip>>:<port>/api/v2"
+        AWX_CREDENTIAL = 'AWX_CREDENTIAL'
+        AWX_PRE_CHECK_JOB_ID = "13"
+        AWX_USD_SYNC_JOB_ID = "14"
+        AWX_UPGRADE_JOB_ID = "17"
+        AWX_POST_CHECK_JOB_ID = "15"
+        NEXUS_USER = "admin"
+        NEXUS_PASSWORD = ""
+        NEXUS_URL = ""
+        NEXUS_REPO = "device_upgrade_awx"
+        sonarqube_scanner = tool "sonarqube_scanner_4.8"
+    }
+
+    stages {
+        stage('Checkout from GitHub') {
+            steps {
+                git branch: '',
+                credentialsId: '',
+                url: ''
+            }
+        }
+        stage("SonarQube analysis") {
+	         steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh '${sonarqube_scanner}/bin/sonar-scanner -Dsonar.projectKey=device_upgrade -Dsonar.projectVersion=${BUILD_NUMBER}'
+                }
+	         }
+	     }
+        stage("Quality gate") {
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }
+        stage('Set up USD app to download image') {
+            steps {
+                script {
+                    def response = httpRequest authentication: "${AWX_CREDENTIAL}", httpMode: 'POST', contentType: 'APPLICATION_JSON', url: "${AWX_API}/job_templates/${AWX_USD_SYNC_JOB_ID}/launch/"
+                    //echo "Status: ${response.status}\nContent: ${response.content}"
+                    sleep 45
+                }
+            }
+        }
+        stage('USD Tool - Software Download') {
+            steps {
+                dir('/tmp/usd') {
+                    script {
+                        withCredentials([usernamePassword(credentialsId: 'cco_creds', passwordVariable: 'CCO_PASSWORD', usernameVariable: 'CCO_USER')]) {
+                            sh '/tmp/usd/usd_app_container.sh -v -d -p ${IMAGE_PID} -i ${IMAGE_NAME} -f downloads -t cco -U $CCO_USER -P $CCO_PASSWORD'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Pre-Check via Ansible') {
+            steps {
+                script {
+                    def response = httpRequest authentication: "${AWX_CREDENTIAL}", httpMode: 'POST', contentType: 'APPLICATION_JSON', url: "${AWX_API}/job_templates/${AWX_PRE_CHECK_JOB_ID}/launch/"
+                    //echo "Status: ${response.status}\nContent: ${response.content}"
+                    sleep 15
+                }
+            }
+        }
+        stage('Perform Router Upgrade via Ansible') {
+            steps {
+                script {
+                    def response = httpRequest authentication: "${AWX_CREDENTIAL}", httpMode: 'POST', 
+                                    contentType: 'APPLICATION_JSON',
+                                    requestBody: '{"extra_vars": {"image":"'+IMAGE_NAME+'"}}',
+                                    url: "${AWX_API}/job_templates/${AWX_UPGRADE_JOB_ID}/launch/"
+                    //echo "Status: ${response.status}\nContent: ${response.content}"
+                    def jsonObj = readJSON text: response.content
+                    env.job_id = "${jsonObj.id}"
+                    echo "AWX Triggered Job ID: ${job_id}"
+                }
+            }
+        }
+        stage('Check upgrade status') {
+            steps {
+                timeout(15) {
+                    waitUntil(initialRecurrencePeriod: 30000) {
+                        script {
+                                def job_retry = httpRequest authentication: "${AWX_CREDENTIAL}", contentType: 'APPLICATION_JSON', url: "${AWX_API}/jobs/${job_id}/?format=json"
+                                def job_retry_response = readJSON text: job_retry.content
+                                env.job_retry_response_status = "${job_retry_response.status}"
+                                echo "AWX Current Job Status: ${job_retry_response.status}"
+                                return (job_retry_response.status == 'successful' || job_retry_response.status == 'failed' || job_retry_response.status == 'canceled')
+                        }
+                    }
+                }
+            }
+        }
+        stage('Validate Upgrade via Ansible') {
+            steps {
+                script {
+                    def job_stdout = httpRequest authentication: "${AWX_CREDENTIAL}", contentType: 'APPLICATION_JSON', url: "${AWX_API}/jobs/${job_id}/stdout/?format=txt"
+                    //echo "Status: ${job_stdout.status}"
+                    echo "${job_stdout.content}"
+                    if (job_retry_response_status == 'failed' || job_retry_response_status == 'canceled') {
+                        error("Failed: AWX Job Status is either failed or canceled")
+                    }
+                }
+
+            }
+        }
+        stage('Post-Check via Ansible') {
+            steps {
+                script {
+                    def response = httpRequest authentication: "${AWX_CREDENTIAL}", httpMode: 'POST', contentType: 'APPLICATION_JSON', url: "${AWX_API}/job_templates/${AWX_POST_CHECK_JOB_ID}/launch/"
+                    //echo "Status: ${response.status}\nContent: ${response.content}"
+                    sleep 20
+                }
+            }
+        }
+        stage('Pre-Post Check Diff Comparison') {
+            steps {
+                script {
+                    catchError(buildResult: 'SUCCESS') {
+                        sh 'diff -y --suppress-common-lines /tmp/asr_pre_health_check.txt /tmp/asr_post_health_check.txt'
+                    }
+                }
+            }
+        }
+        stage ('Publish image to Nexus') {
+            steps {
+                    sh "curl -v -u ${NEXUS_USER}:${NEXUS_PASSWORD} --upload-file /tmp/usd/downloads/downloads/${IMAGE_NAME} ${NEXUS_URL}/repository/${NEXUS_REPO}/"
+            }
+        }
+    }
+   post {
+        always {
+            script {
+                catchError(buildResult: 'SUCCESS') {
+                    sh 'docker image rm alpine:latest'
+                }
+                echo 'Jenkins device upgrade build completed.'
+            }
+        }
+    }
+}

@@ -1,0 +1,3 @@
+ansible_connection: netconf
+netconf_port: 830
+ansible_netconf_host_key_checking: false

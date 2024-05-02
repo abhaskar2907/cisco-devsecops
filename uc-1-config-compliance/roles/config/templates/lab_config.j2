@@ -1,0 +1,44 @@
+<config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+   <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+      <interface>
+        <Loopback>
+          <name>{{ loop_int }}</name>
+          <ip>
+            <address>
+              <primary>
+                <address>{{ loop_ip }}</address>
+                <mask>{{ loop_subnet }}</mask>
+              </primary>
+            </address>
+          </ip>
+          <logging>
+            <event>
+              <link-status/>
+            </event>
+          </logging>
+        </Loopback>
+      </interface>
+      <router>
+        <bgp xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-bgp">
+          <id>{{ bgp_id }}</id>
+          <neighbor>
+            <id>{{ bgpnei_ip }}</id>
+            <remote-as>{{ bgpnei_remoteas }}</remote-as>
+          </neighbor>
+<!--            <address-family>-->
+<!--                 <ipv4>-->
+<!--                     <af-name>unicast</af-name>-->
+<!--                     <ipv4-unicast>-->
+<!--                    <network>-->
+<!--                        <with-mask>-->
+<!--                            <number>100.100.100.100</number>-->
+<!--                            <mask>255.255.255.255</mask>-->
+<!--                        </with-mask>-->
+<!--                    </network>-->
+<!--                     </ipv4-unicast>-->
+<!--                 </ipv4>-->
+<!--            </address-family>-->
+        </bgp>
+      </router>
+   </native>
+</config>
